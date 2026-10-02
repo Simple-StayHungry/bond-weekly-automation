@@ -1,0 +1,85 @@
+# 债市周报 Part Profile
+# =====================
+# 一个 Part = 地区范围（provinces）+ 业务规则（rules）+ 文字/格式（formatter/template）。
+# 新增地区只需加一段配置；视觉格式永远从“上一周成品”继承，不在这里写死。
+
+# 全局默认规则（各 Part 未覆盖时生效）
+defaults:
+  rules:
+    exclude_abs_reits: true        # 公司债板块剔除 ABS/公募REITs（rules R3）
+    amount_style_sse: sse          # 上交所金额：整数补“.0”、小数原样（rules R1）
+    amount_style_szse: raw         # 深交所金额：接口原值（rules R2）
+    exchange_underwriter_delimiter: ","  # 公司债板块多家主承销商分隔符
+    empty_province_line: true      # 交易商协会空省“省份：\n无”分行（rules R5）
+  highlight_rules: []             # 公开版不预置任何特定机构高亮规则；需要时自行配置
+
+parts:
+  - id: northwest
+    name: 西北四省债市周报
+    keywords:
+      - 西北四省债市周报
+      - 西北四省
+    provinces:
+      - 甘肃
+      - 新疆
+      - 宁夏
+      - 青海
+    formatter: default
+    highlight_color: FFFF0000      # 示例配置
+    rules:
+      week_end: 5                  # 报告周期结束=周六
+      nafmii_mode: weekly          # 交易商协会：仅报告周内更新的项目
+      has_ent_col: true            # 有“企业债券项目情况”第四列
+      requires_bse: true           # 北交所跳过时只出预览版
+      max_content_row_height: 409.6 # Excel/WPS 长文本行上限示例
+
+  - id: guangdong
+    name: 广东省债券周报
+    keywords:
+      - 广东省债券周报
+      - 广东债市周报
+    provinces:
+      - 广东
+    formatter: default
+    highlight_color: FFC00000      # 示例配置
+    rules:
+      week_end: inherit            # 继承当前上期模板实际截止星期
+      source_date_lag_days: 1      # 允许源数据日期比报告期末晚 1 日
+      nafmii_mode: all             # 交易商协会：全量在途（按项目名去重）
+      has_ent_col: false           # 广东模板只有三栏
+      requires_bse: true
+      max_content_row_height: 409.5 # Excel/WPS 长文本行上限示例
+
+  - id: shaanxi
+    name: 陕西省债市周报
+    keywords:
+      - 陕西省债市周报
+      - 陕西债市周报
+    provinces:
+      - 陕西
+    formatter: default
+    highlight_color: FFC00000      # 示例配置
+    rules:
+      week_end: 4                  # 报告周期结束=周五
+      nafmii_mode: all
+      has_ent_col: true
+      requires_bse: true
+      source_date_lag_days: 1      # 允许源数据日期比报告期末晚 1 日
+      max_content_row_height: 409.5 # Excel/WPS 长文本行上限示例
+
+  - id: henan
+    name: 河南省债市周报
+    keywords:
+      - 河南省债市周报
+      - 河南债市周报
+    provinces:
+      - 河南
+    formatter: default
+    highlight_color: FFC00000      # 示例配置
+    rules:
+      week_end: 4
+      nafmii_mode: all
+      has_ent_col: true
+      requires_bse: true
+      source_date_lag_days: 1      # 允许源数据日期比报告期末晚 1 日
+      max_content_row_height: 409.5 # Excel/WPS 长文本行上限示例

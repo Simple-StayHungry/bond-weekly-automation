@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="债市周报生成工具">
+<title>债市周报</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230071E3'/%3E%3Ctext x='16' y='22' font-size='15' font-family='-apple-system,sans-serif' font-weight='700' fill='white' text-anchor='middle'%3E%E5%80%BA%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #F5F5F7; --fg: #1D1D1F; --muted: #6E6E73;
+    --accent: #0066CC; --card: #FFFFFF; --line: rgba(0,0,0,.08);
+    --ink-line: #C7C7CC; --good: #248A3D;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background:
+      radial-gradient(1100px 420px at 18% -8%, rgba(255,255,255,.9), rgba(255,255,255,0) 60%),
+      var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+                 "PingFang SC", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  button:focus-visible, a:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px;
+  }
+  .num { font-variant-numeric: tabular-nums; }
+
+  .page { width: 100%; max-width: 1480px; margin: 0 auto; padding: 56px 56px 110px; }
+
+  /* ---- 页头：周报封面感 ---- */
+  header { margin-bottom: 44px; text-align: center; }
+  h1 {
+    font-size: 42px; font-weight: 700; letter-spacing: -.035em;
+    margin: 0 0 14px;
+  }
+  .dateline {
+    display: inline-block; color: var(--muted); font-size: 15px;
+    border: 1px solid #D2D2D7; border-radius: 999px; padding: 6px 18px;
+    background: rgba(255,255,255,.75); letter-spacing: .01em;
+  }
+  .dateline:empty { display: none; }
+
+  /* ---- 卡片 ---- */
+  .card {
+    background: var(--card); border-radius: 24px; padding: 38px 42px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.03), 0 8px 28px rgba(0,0,0,.05);
+    margin-bottom: 28px;
+    display: flex; flex-direction: column;
+    transition: box-shadow .25s ease, transform .25s ease;
+  }
+  .grid:not(.rendered) .card { animation: rise .5s ease both; }
+  .grid:not(.rendered) .card:nth-child(2) { animation-delay: .06s; }
+  .grid:not(.rendered) .card:nth-child(3) { animation-delay: .12s; }
+  .grid:not(.rendered) .card:nth-child(4) { animation-delay: .18s; }
+  .grid:not(.rendered) .card:nth-child(5) { animation-delay: .24s; }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .card:hover {
+    box-shadow: 0 2px 4px rgba(0,0,0,.04), 0 16px 44px rgba(0,0,0,.08);
+  }
+
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(430px, 1fr)); gap: 30px; }
+  @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+
+  /* ---- Part 凭证卡 ---- */
+  .part-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 12px; }
+  .part-badge {
+    flex: none; align-self: center;
+    background: var(--fg); color: #fff; font-size: 12px; font-weight: 600;
+    letter-spacing: .06em; padding: 4px 10px; border-radius: 7px;
+  }
+  .part-name { font-size: 24px; font-weight: 650; letter-spacing: -.015em; }
+  .provinces { color: var(--muted); font-size: 15px; margin: 0 0 18px; }
+  .prev {
+    color: var(--muted); font-size: 15px; margin: 0 0 24px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .prev::before {
+    content: ""; width: 26px; height: 1px; background: var(--ink-line);
+  }
+  .voucher-line {
+    margin: 26px 0 22px; border: 0; border-top: 1px dashed var(--ink-line);
+  }
+
+  /* ---- 按钮 ---- */
+  .btn {
+    display: inline-block; border: 0; border-radius: 980px; cursor: pointer;
+    background: var(--accent); color: #fff; font-size: 16px; font-weight: 600;
+    padding: 13px 30px; text-decoration: none; min-height: 50px;
+    transition: opacity .2s ease, transform .2s ease, box-shadow .2s ease;
+    box-shadow: 0 4px 14px rgba(0,102,204,.25);
+  }
+  .btn:hover { opacity: .92; box-shadow: 0 6px 18px rgba(0,102,204,.3); }
+  .btn:active { transform: translateY(0) scale(.98); box-shadow: none; }
+  .btn[disabled] { opacity: .45; cursor: not-allowed; box-shadow: none; }
+  .btn.secondary {
+    background: #F0F0F3; color: var(--fg); font-weight: 500;
+    box-shadow: none;
+  }
+  .btn.secondary:hover { background: #E7E7EC; box-shadow: none; }
+  .btn.small { padding: 10px 20px; min-height: 42px; font-size: 14px; box-shadow: none; }
+  .btn.block { width: 100%; text-align: center; }
+
+  /* ---- 状态行 ---- */
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+         background: var(--good); margin-right: 8px; }
+  .dot.off { background: #AEAEB2; }
+  .status-line { font-size: 15px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+  .status-line.warn { color: #B25000; }
+
+  .result-stats { display: flex; gap: 34px; margin: 16px 0 20px; }
+  .result-stats b { font-size: 26px; font-weight: 650; display: block;
+                    letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+  .result-stats span { font-size: 13px; color: var(--muted); }
+
+  /* ---- 进度条 ---- */
+  .progress-wrap { margin-top: 12px; }
+  .progress-bar { height: 5px; background: rgba(0,0,0,.07); border-radius: 3px;
+                  overflow: hidden; }
+  .progress-fill { height: 100%; width: 0%; background: var(--accent);
+                   border-radius: 3px; transition: width .6s ease; }
+  .progress-stage { font-size: 13px; color: var(--muted); margin-top: 8px;
+                    font-variant-numeric: tabular-nums; }
+
+  .spinner {
+    width: 20px; height: 20px; border: 2.5px solid rgba(0,102,204,.2);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 1s linear infinite; display: inline-block; vertical-align: -4px;
+    margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---- 弹层 ---- */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(20,20,22,.4);
+    display: flex; align-items: center; justify-content: center; z-index: 50;
+    animation: fade .2s ease both;
+  }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  .sheet {
+    background: #fff; border-radius: 24px; width: min(560px, 92vw);
+    padding: 32px 34px; box-shadow: 0 30px 90px rgba(0,0,0,.28);
+    animation: pop .25s cubic-bezier(.2,.9,.3,1.2) both;
+  }
+  @keyframes pop { from { opacity: 0; transform: scale(.96) translateY(8px); }
+                   to   { opacity: 1; transform: scale(1) translateY(0); } }
+  .sheet h2 { font-size: 22px; letter-spacing: -.02em; margin: 0 0 8px; }
+  .sheet .hint { color: var(--muted); font-size: 14px; margin-bottom: 18px; line-height: 1.5; }
+  .drop {
+    border: 2px dashed #C7C7CC; border-radius: 16px; padding: 34px;
+    text-align: center; color: var(--muted); font-size: 14px; cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .drop.drag { border-color: var(--accent); background: rgba(0,102,204,.05); }
+  .file-row { display: flex; align-items: center; gap: 8px; margin-top: 10px;
+              font-size: 14px; padding: 12px 16px; background: #F5F5F7;
+              border-radius: 12px; }
+  .file-row .ok { color: var(--good); font-weight: 600; }
+  .file-row .bad { color: #C6362D; }
+  .dialog-choices { margin: 16px 0 4px; }
+  .dialog-choices label {
+    display: block; padding: 13px 16px; border: 1.5px solid var(--line);
+    border-radius: 14px; margin-bottom: 10px; cursor: pointer; font-size: 15px;
+    transition: border-color .15s, background .15s;
+  }
+  .dialog-choices label:has(input:checked) { border-color: var(--accent);
+      background: rgba(0,102,204,.05); }
+  .dialog-choices input { margin-right: 10px; accent-color: var(--accent); }
+  .sheet-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+  .tech { font-size: 13px; color: var(--muted); margin-top: 16px; }
+  .tech summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+  .tech table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .tech td { padding: 6px 8px; border-bottom: 1px solid var(--line); font-size: 12px;
+             font-variant-numeric: tabular-nums; }
+  .tech .bad { color: #C6362D; font-weight: 600; }
+  .tech .skip { color: #B25000; }
+
+  .history-link { text-align: center; margin-top: 10px; }
+  .history-link a { color: var(--accent); text-decoration: none; font-size: 15px; }
+  .warning-banner {
+    background: #FFF4E5; color: #B25000; border-radius: 12px; padding: 12px 16px;
+    font-size: 14px; margin-bottom: 16px;
+  }
+  .hidden { display: none; }
+  .toast {
+    position: fixed; top: 22px; left: 50%; transform: translateX(-50%) translateY(-10px);
+    background: rgba(29,29,31,.92); color: #fff; padding: 12px 22px;
+    border-radius: 12px; font-size: 14px; max-width: 78vw;
+    opacity: 0; pointer-events: none; z-index: 200;
+    transition: opacity .25s ease, transform .25s ease;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>债市周报</h1>
+    <div class="dateline" id="dateline">数据加载中…</div>
+  </header>
+
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:24px">
+      <div style="flex:1; min-width:320px">
+        <div style="font-size:22px; font-weight:650; letter-spacing:-.01em; margin-bottom:14px">本周数据
+          <span id="week-range" class="num" style="color:var(--muted); font-weight:400; font-size:15px"></span>
+        </div>
+        <div class="status-line" id="dataset-line">—</div>
+        <div class="status-line" style="margin-bottom:8px">
+          <span id="exchange-dot" class="dot off"></span><span id="exchange-line">交易所数据：—</span>
+        </div>
+        <div id="sync-progress" class="progress-wrap hidden" style="max-width:460px">
+          <div class="progress-bar"><div class="progress-fill" id="sync-fill"></div></div>
+          <div class="progress-stage" id="sync-stage"></div>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <button class="btn" onclick="openUpdateSheet()">更新来源数据</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid" id="part-grid"></div>
+
+  <div class="history-link"><a href="#" onclick="toggleHistory(); return false">历史记录 →</a></div>
+  <div id="history" class="card hidden" style="margin-top:26px">
+    <h2 style="font-size:20px; letter-spacing:-.01em; margin:0 0 22px">历史记录</h2>
+    <div id="history-body"></div>
+  </div>
+</div>
+
+<!-- 更新来源数据 Sheet -->
+<div class="overlay hidden" id="update-overlay">
+  <div class="sheet">
+    <h2>更新来源数据</h2>
+    <div class="hint">把用户提供的两份 Excel 一起拖进来（新发行债券 + NAFMII），系统会自动识别。</div>
+    <div class="drop" id="drop">拖入文件，或点击选择
+      <input type="file" id="file-input" accept=".xlsx" multiple hidden>
+    </div>
+    <div id="file-list"></div>
+    <div id="upload-msg" class="status-line"></div>
+    <div class="sheet-actions">
+      <button class="btn secondary" onclick="closeUpdateSheet()">取消</button>
+      <button class="btn" id="do-update" disabled onclick="doUpdate()">更新</button>
+    </div>
+  </div>
+</div>
+
+<!-- 模板上传 Sheet -->
+<div class="overlay hidden" id="tpl-overlay">
+  <div class="sheet">
+    <h2>上传最新周报</h2>
+    <div class="hint" id="tpl-hint"></div>
+    <div class="drop" id="tpl-drop">拖入人工确认后的最新周报文件，或点击选择
+      <input type="file" id="tpl-input" accept=".xlsx" hidden>
+    </div>
+    <div id="tpl-name" class="file-row hidden"></div>
+    <div class="sheet-actions">
+      <button class="btn secondary" onclick="closeTplSheet()">取消</button>
+      <button class="btn" id="do-tpl" disabled onclick="doUploadTemplate()">上传</button>
+    </div>
+  </div>
+</div>
+
+<!-- BLOCKED 裁决对话框 -->
+<div class="overlay hidden" id="blocked-overlay">
+  <div class="sheet">
+    <h2>需要确认 <span id="blocker-count"></span> 项</h2>
+    <div class="hint">系统无法判断以下项目的最终状态，请选择后继续生成。</div>
+    <div id="blocker-list"></div>
+    <div class="sheet-actions">
+      <button class="btn secondary" onclick="closeBlocked()">取消</button>
+      <button class="btn" id="do-resolve" onclick="doResolve()">确认并继续</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script>
+let STATE = {parts: [], jobs: {}, poll: {}, activeJobByPart: {}, creatingPart: {}};
+const $ = id => document.getElementById(id);
+let TOAST_T = null;
+function toast(msg) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(TOAST_T);
+  TOAST_T = setTimeout(() => el.classList.remove("show"), 2800);
+}
+
+async function j(method, url, body) {
+  const opt = {method, headers: {}};
+  if (body instanceof FormData) opt.body = body;
+  else if (body) { opt.headers["Content-Type"] = "application/json"; opt.body = JSON.stringify(body); }
+  const r = await fetch(url, opt);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || r.statusText);
+  return data;
+}
+
+/* ---------------- 状态渲染 ---------------- */
+async function refresh() {
+  const s = await j("GET", "/api/status");
+  STATE.parts = s.parts;
+  const ds = s.dataset;
+  if (ds) {
+    $("dateline").textContent = "数据更新至 " + fmtDate(ds.period_end);
+    $("dataset-line").innerHTML = `<span class="dot"></span>新发行债券 已就绪　·　NAFMII 已就绪`;
+  } else {
+    $("dateline").textContent = "";
+    $("dataset-line").textContent = "本周数据还没上传 —— 点右边按钮，把用户提供的两份 Excel 一起拖进去";
+  }
+  const prog = s.sync_progress || {};
+  if (s.sync_running) {
+    $("exchange-dot").className = "dot off";
+    $("exchange-line").textContent = "交易所数据：正在更新…";
+    $("sync-progress").classList.remove("hidden");
+    $("sync-fill").style.width = (prog.percent || 0) + "%";
+    $("sync-stage").textContent = (prog.stage || "") +
+      (prog.percent ? "（" + prog.percent + "%）" : "");
+  } else if (s.synced) {
+    $("exchange-dot").className = "dot";
+    const scope = s.latest_scope_name ? ("最近更新：" + s.latest_scope_name + " · ") : "";
+    $("exchange-line").textContent = "交易所数据：" + scope + fmtDateTime(s.latest_sync) + "（各板块时间见卡片）";
+    $("sync-progress").classList.add("hidden");
+  } else {
+    $("exchange-dot").className = "dot off";
+    $("exchange-line").textContent = "交易所数据：未同步";
+    $("sync-progress").classList.add("hidden");
+  }
+  if (s.sync_error) {
+    $("exchange-line").textContent += "（上次同步失败：" + s.sync_error.slice(0, 60) + "）";
+  }
+  const recentJobs = s.recent_jobs || [];
+  await loadRecentJobs(recentJobs).catch(() => {});
+  renderCards();
+  renderHistory(recentJobs);
+}
+function fmtDate(yyyymmdd) {
+  const [y, m, d] = yyyymmdd.split("-");
+  return `${Number(m)} 月 ${Number(d)} 日`;
+}
+function fmtRange(period) {
+  if (!period || !period[0]) return "";
+  const f = s => (s || "").slice(5).replace("-", ".");
+  return f(period[0]) + "—" + f(period[1]);
+}
+function fmtDateTime(s) {
+  if (!s) return "";
+  const [d, t] = s.split(" ");
+  const [, m, dd] = d.split("-");
+  return `${Number(m)}月${Number(dd)}日 ${t.slice(0, 5)}`;
+}
+
+function renderCards() {
+  $("part-grid").innerHTML = STATE.parts.map(p => {
+    const job = currentJob(p.id);
+    const badge = {northwest: "西北", guangdong: "广东", shaanxi: "陕西", henan: "河南"}[p.id] || p.id;
+    const next = p.next_period;   // ["2026-08-17","2026-08-22"] 或 null
+    let body;
+    if (!p.template_ready) {
+      // 还从未有过模板：提示先上传上周周报
+      body = `<div class="status-line" style="margin-bottom:16px">还没有上周周报，先上传一次</div>
+        <button class="btn" style="width:100%" onclick="openTplSheet('${p.id}','${p.name}')">上传上周周报 →</button>`;
+    } else if (STATE.creatingPart[p.id]) {
+      body = `<div class="status-line"><span class="spinner"></span>正在启动生成任务…</div>
+        <button class="btn" style="width:100%; margin-top:14px" disabled>正在生成</button>`;
+    } else if (job && (job.status === "RUNNING" || job.status === "PENDING")) {
+      body = `<div class="status-line"><span class="spinner"></span>正在生成周报…</div>
+        <button class="btn" style="width:100%; margin-top:14px" disabled>正在生成</button>`;
+    } else if (p.done && job && isReportDone(p.id, job.id)) {
+      // 用户已点过“完成”：回到初始界面（上传上周周报），开始下一轮
+      body = `<div class="status-line" style="margin-bottom:16px">本轮已完成。等人工确认本周最终版后上传，作为下一轮模板</div>
+        <button class="btn" style="width:100%" onclick="openTplSheet('${p.id}','${p.name}')">上传最新周报 →</button>`;
+    } else if (p.done && job && ["PASS", "WARNING", "BLOCKED"].includes(job.status)) {
+      // 本周报告已生成。自动链到下一期模板不能掩盖尚未点“完成”的本期成品。
+      const m = job.metrics || {};
+      const staleWarn = job.exchange_stale
+        ? `<div class="status-line warn" style="margin-bottom:8px">⚠ 交易所数据为 ${job.exchange_captured ? fmtDateTime(job.exchange_captured) : "上一期"} 快照（未覆盖本期 ${job.period ? fmtRange(job.period) : ""}），请更新后重新生成</div>`
+        : "";
+      body = staleWarn + `
+        <div class="status-line" style="margin-bottom:6px">${
+          job.status === "PASS" ? '<span class="dot"></span>已生成' :
+          job.status === "WARNING" ? "已生成（预览版）" : "需要确认后生成"}</div>
+        <div class="result-stats">
+          <div><b class="num">${m["新发行债券"] ?? "—"}</b><span>新发行</span></div>
+          <div><b class="num">${m["公司债项目"] ?? "—"}</b><span>公司债</span></div>
+          <div><b class="num">${m["交易商协会"] ?? "—"}</b><span>NAFMII</span></div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+          ${job.status === "PASS"
+            ? `<a class="btn small" href="/api/jobs/${job.id}/download">下载周报</a>`
+            : `<a class="btn small secondary" href="/api/jobs/${job.id}/download">下载预览版</a>`}
+          <button class="btn small secondary" onclick="openTech('${job.id}')">查看检查结果</button>
+          ${job.status === "BLOCKED" && (job.blockers || []).length && (job.blockers || []).every(b => Array.isArray(b.candidates))
+            ? `<button class="btn small" onclick="openBlocked('${job.id}')">确认未知状态</button>` : ""}
+          ${job.status !== "BLOCKED"
+            ? `<button class="btn small" onclick="finishReportPart('${p.id}','${job.id}')">完成</button>` : ""}
+        </div>
+        <div class="tech hidden" id="tech-${job.id}"></div>`;
+    } else if (p.stale) {
+      // 本周已生成但交易所快照是上一期的：更新快照后重新生成本周（按钮由 next_ok 决定）
+      const warn = p.next_ok
+        ? `<div class="status-line warn" style="margin-bottom:16px">本周报告含上一期交易所数据，用最新数据重新生成本周报告</div>`
+        : `<div class="status-line warn" style="margin-bottom:16px">本周报告已生成，但交易所数据为 ${p.exchange_latest ? fmtDateTime(p.exchange_latest) : "上一期"} 快照（未覆盖本期）。请先点下方「更新交易所数据」，完成后重新生成本周</div>`;
+      const act = p.next_ok
+        ? `<button class="btn" style="width:100%" onclick="createJob('${p.id}')">重新生成本周报告 →</button>`
+        : `<button class="btn secondary" style="width:100%" onclick="doSyncPart('${p.id}')">更新交易所数据 →</button>`;
+      body = warn + act;
+    } else if (!next) {
+      // 模板无法推断周期
+      body = `<div class="status-line" style="margin-bottom:16px">无法识别下周周期，请重新上传上周周报</div>
+        <button class="btn secondary" style="width:100%" onclick="openTplSheet('${p.id}','${p.name}')">上传上周周报 →</button>`;
+    } else if (!p.next_ok) {
+      // 主动作由后端结构化枚举决定，绝不再根据提示文案猜测。
+      // 否则“最新人工确认周报未上传”这类状态会被误画成“更新交易所数据”。
+      const blk = p.next_block || "条件未就绪";
+      let act;
+      if (p.next_action === "upload_template") {
+        act = `<button class="btn" style="width:100%" onclick="openTplSheet('${p.id}','${p.name}')">上传最新周报 →</button>`;
+      } else if (p.next_action === "upload_data") {
+        act = `<button class="btn secondary" style="width:100%" onclick="openUpdateSheet()">更新来源数据 →</button>`;
+      } else if (p.next_action === "sync_exchange") {
+        act = `<button class="btn secondary" style="width:100%" onclick="doSyncPart('${p.id}')">更新交易所数据 →</button>`;
+      } else {
+        act = `<button class="btn secondary" style="width:100%" onclick="refresh()">重新检查状态 →</button>`;
+      }
+      body = `<div class="status-line warn" style="margin-bottom:16px">${blk}</div>${act}`;
+    } else {
+      // 模板、数据、交易所快照全部就绪：显示生成按钮
+      body = `<div class="status-line" style="margin-bottom:16px">将生成 <b>${fmtRange([next[0], next[1]])}</b> 周报</div>
+        <button class="btn" style="width:100%" onclick="createJob('${p.id}')">生成周报 →</button>`;
+    }
+    return `
+      <div class="card">
+        <div class="part-head">
+          <span class="part-badge">${badge}</span>
+          <span class="part-name">${p.name}</span>
+        </div>
+        <div class="provinces">${p.provinces.join(" · ")}</div>
+        ${doneInfo(p.id) && doneInfo(p.id).period
+          ? `<div class="prev">最近完成周报：${fmtRange(doneInfo(p.id).period)}</div>`
+          : (p.prev_period ? `<div class="prev">上期 ${p.prev_period[0]}—${p.prev_period[1]}</div>` : "")}
+        <div style="flex:1">${body}</div>
+        <hr class="voucher-line">
+        ${syncRow(p.id)}
+      </div>`;
+  }).join("");
+  $("part-grid").classList.add("rendered");
+}
+function syncRow(partId) {
+  const p = STATE.parts.find(x => x.id === partId) || {};
+  // 交易所区域默认只显示状态。真正需要同步时，主流程会给出唯一的“更新交易所数据”动作；
+  // 只有全部前置条件已就绪、准备生成时，才保留一个可选的“重新获取”辅助按钮。
+  const hasData = !!p.exchange_latest;
+  const needsUpdate = !!p.exchange_needs_update;
+  const exch = hasData
+    ? "交易所数据：" + fmtDateTime(p.exchange_latest)
+    : "交易所数据：未更新";
+  const status = needsUpdate ? "warn" : "";
+  const job = currentJob(partId);
+  const completedByUser = !!(job && isReportDone(partId, job.id));
+  const allowManualResync = p.next_action === "generate_report" && hasData && !needsUpdate && !completedByUser;
+  const syncButton = allowManualResync
+    ? `<button class="btn small secondary" id="part-sync-btn-${partId}" onclick="doSyncPart('${partId}')">重新获取交易所数据</button>`
+    : "";
+  return `
+    <div style="margin-top:auto">
+      <div class="row" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap">
+        ${syncButton}
+        <span class="status-line num ${status}" id="part-sync-msg-${partId}" style="margin:0">${exch}${needsUpdate ? "（需更新）" : ""}</span>
+      </div>
+      <div id="part-sync-progress-${partId}" class="progress-wrap hidden" style="margin-top:10px">
+        <div class="progress-bar"><div class="progress-fill" id="part-sync-fill-${partId}"></div></div>
+        <div class="progress-stage" id="part-sync-stage-${partId}"></div>
+      </div>
+    </div>`;
+}
+
+async function doSyncPart(partId) {
+  const btn = $("part-sync-btn-" + partId);
+  const wrap = $("part-sync-progress-" + partId);
+  try {
+    const r = await j("POST", "/api/sync", {part_id: partId});
+    if (r.ok === false) { toast(r.message || "请稍候"); return; }
+    btn.disabled = true;
+    btn.textContent = "正在更新…";
+    wrap.classList.remove("hidden");
+    for (let i = 0; i < 150; i++) {
+      await new Promise(r2 => setTimeout(r2, 2000));
+      const s = await j("GET", "/api/status");
+      const prog = s.sync_progress || {};
+      $("part-sync-fill-" + partId).style.width = (prog.percent || 0) + "%";
+      $("part-sync-stage-" + partId).textContent = (prog.stage || "") +
+        (prog.percent ? "（" + prog.percent + "%）" : "");
+      if (!s.sync_running) {
+        if (s.sync_error) {
+          toast("更新失败：" + s.sync_error);
+          await refresh();
+        } else {
+          // 更新完成：自动回到初始状态（按钮恢复、进度条收起、时间更新）
+          await refresh();
+        }
+        break;
+      }
+    }
+  } catch (e) { toast(e.message || "更新失败，请重试"); await refresh(); }
+}
+
+
+function doneInfo(partId) {
+  try {
+    const raw = localStorage.getItem("report_done_" + partId);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function isReportDone(partId, jobId) {
+  const d = doneInfo(partId);
+  return !!(d && d.job_id === jobId);
+}
+function finishReportPart(partId, jobId) {
+  // 点“完成”：板块回到与其他板块一致的初始状态；
+  // 顶部标注“最近完成”的周报时间，下次完成后自动更新
+  const job = STATE.jobs[jobId] || {};
+  try {
+    localStorage.setItem("report_done_" + partId,
+      JSON.stringify({job_id: jobId, period: job.period || null}));
+  } catch (e) {}
+  // 先本地立即切回初始状态，避免等待完整 refresh 后用户感觉按钮没反应。
+  renderCards();
+  refresh().catch(() => {});
+}
+
+function currentJob(partId) {
+  // 新建任务后 /api/status 还没刷新时，必须优先显示刚创建的 job。
+  // 旧实现只看 p.recent[0]，导致后台已经开始生成，卡片仍停在“生成周报”。
+  const activeId = STATE.activeJobByPart[partId];
+  if (activeId && STATE.jobs[activeId]) return STATE.jobs[activeId];
+  const rec = (STATE.parts.find(p => p.id === partId) || {}).recent;
+  const id = rec && rec[0] ? rec[0].id : null;
+  return id ? STATE.jobs[id] : null;
+}
+
+async function loadRecentJobs(recentJobs) {
+  // 首页只需要每个板块最新任务的详情；历史 20 条不再逐条串行读取 manifest。
+  const ids = STATE.parts
+    .map(p => p.recent && p.recent[0] ? p.recent[0].id : null)
+    .filter(Boolean);
+  await Promise.all(ids.map(async id => {
+    if (!STATE.jobs[id]) STATE.jobs[id] = await j("GET", "/api/jobs/" + id);
+  }));
+  return recentJobs || [];
+}
+
+/* ---------------- 生成 / 轮询 ---------------- */
+async function createJob(partId) {
+  // 防双击：用户一点生成，卡片立刻进入创建态，不等 POST 返回。
+  if (STATE.creatingPart[partId]) return;
+  const existing = currentJob(partId);
+  if (existing && ["PENDING", "RUNNING"].includes(existing.status)) return;
+  STATE.creatingPart[partId] = true;
+  renderCards();
+  try {
+    const d = await j("POST", "/api/jobs", {part_id: partId});
+    STATE.creatingPart[partId] = false;
+    STATE.activeJobByPart[partId] = d.job_id;
+    // 先放一个本地 PENDING 占位，保证接口一返回卡片立即显示“正在生成”。
+    // 随后的轮询会用后端真实状态覆盖。
+    STATE.jobs[d.job_id] = {id: d.job_id, part_id: partId, status: "PENDING"};
+    renderCards();
+    pollJob(d.job_id, partId);
+  } catch (e) {
+    STATE.creatingPart[partId] = false;
+    renderCards();
+    toast(e.message || "生成失败，请重试");
+  }
+}
+function pollJob(jobId, partId) {
+  if (STATE.poll[partId] === jobId) return;
+  STATE.poll[partId] = jobId;
+  (async () => {
+    try {
+      while (true) {
+        const d = await j("GET", "/api/jobs/" + jobId).catch(() => null);
+        if (!d) {
+          toast("生成状态读取失败，请重新检查");
+          break;
+        }
+        STATE.jobs[jobId] = d;
+        renderCards();
+        if (["PASS", "WARNING", "BLOCKED", "FAILED"].includes(d.status)) {
+          await refresh();
+          if (d.status === "FAILED") toast(d.error || "生成失败，请查看检查结果");
+          break;
+        }
+        await new Promise(r => setTimeout(r, 700));
+      }
+    } finally {
+      delete STATE.poll[partId];
+      // refresh 后 p.recent 已指向最新任务；释放临时绑定。
+      if (STATE.activeJobByPart[partId] === jobId) delete STATE.activeJobByPart[partId];
+      STATE.creatingPart[partId] = false;
+      renderCards();
+    }
+  })();
+}
+
+/* ---------------- BLOCKED 裁决 ---------------- */
+let BLOCKED_JOB = null;
+function manualBlockers(d) { return (d.blockers || []).filter(b => Array.isArray(b.candidates)); }
+function escapeText(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"}[c]));
+}
+async function openBlocked(jobId) {
+  BLOCKED_JOB = jobId;
+  let d = STATE.jobs[jobId];
+  if (!d) { try { d = await j("GET", "/api/jobs/" + jobId); STATE.jobs[jobId] = d; }
+            catch (e) { toast(e.message); return; } }
+  $("blocker-count").textContent = manualBlockers(d).length;
+  $("blocker-list").innerHTML = manualBlockers(d).map((b, i) => `
+    <div style="margin-bottom:14px">
+      <b>${escapeText(b.project)}</b>
+      <div class="muted" style="color:var(--muted); font-size:13px; margin-top:2px">${b.date || ""} 同一天存在多个状态：系统会优先按审核流程自动选择；只有未知新状态才需要人工确认：</div>
+      <div class="dialog-choices">
+        ${b.candidates.map((c) => `
+          <label><input type="radio" name="blk-${i}" value="${escapeText(c)}">${escapeText(c)}</label>`).join("")}
+      </div>
+    </div>`).join("");
+  $("blocked-overlay").classList.remove("hidden");
+}
+function closeBlocked() { $("blocked-overlay").classList.add("hidden"); BLOCKED_JOB = null; }
+async function doResolve() {
+  const jobId = BLOCKED_JOB;
+  const d = STATE.jobs[jobId];
+  const resolutions = manualBlockers(d).map((b, i) => {
+    const el = document.querySelector(`input[name="blk-${i}"]:checked`);
+    return {project: b.project, date: b.date || null, chosen: el ? el.value : null};
+  });
+  if (resolutions.some(r => r.chosen === null)) {
+    toast("请逐项明确选择状态；未知流程没有默认推荐项");
+    return;
+  }
+  try {
+    const r = await j("POST", `/api/jobs/${jobId}/resolve`, {resolutions});
+    closeBlocked();
+    pollJob(r.new_job_id, d.part_id);
+  } catch (e) { toast(e.message); }
+}
+
+/* ---------------- 技术检查折叠 ---------------- */
+const QA_NAMES = {sse: "上交所数据", szse: "深交所数据", bse: "北交所数据",
+                  nafmii: "交易商协会数据", newbond: "本周新发行数据", ooxml: "周报文件检查", layout: "长文本显示检查", names: "机构简称", coverage: "源表覆盖日期"};
+const QA_STATUS = {PASS: "通过", SKIPPED: "未更新", BLOCKED: "需处理", WARNING: "需查看提示"};
+const QA_EXPLAIN = {
+  sse: "上交所债券项目数据（按更新日期落入报告周期）",
+  szse: "深交所债券项目数据（按更新日期落入报告周期）",
+  bse: "北交所债券项目数据（该地区可能本来就没有在审项目，0 条属于正常）",
+  nafmii: "交易商协会注册审核进度（同项目同日多状态会自动处理并记录在下方）",
+  newbond: "本周新发行债券（按发行起始日落在报告周期）",
+  ooxml: "周报文件结构校验（历史内容逐字节保留、新增本周三行）",
+};
+async function openTech(jobId) {
+  const box = $("tech-" + jobId);
+  if (!box) return;
+  if (box.classList.contains("hidden")) {
+    const d = STATE.jobs[jobId] || await j("GET", "/api/jobs/" + jobId);
+    const qa = d.qa || {};
+    const rows = Object.entries(qa).map(([k, v]) => {
+      const st = QA_STATUS[v] || v;
+      const cls = v === "PASS" ? "" : (v === "SKIPPED" ? "skip" : "bad");
+      return `<tr><td style="white-space:nowrap; vertical-align:top">${QA_NAMES[k] || k}</td>
+        <td style="vertical-align:top"><span class="${cls}">${st}</span></td>
+        <td style="color:var(--muted); font-size:12px">${QA_EXPLAIN[k] || ""}</td></tr>`;
+    }).join("");
+    const notes = [];
+    (d.warnings || []).forEach(w => notes.push(`<div>· ${w}</div>`));
+    (d.manual_resolutions || []).forEach(r =>
+      notes.push(`<div>· 自动处理：${r.project}（${r.date || ""}）同日存在 ${r.candidates.join(" / ")}，采用“${r.chosen}”</div>`));
+    (d.blockers || []).forEach(b =>
+      notes.push(`<div class="bad">· 待核实：${escapeText(b.project || [b.source, b.province, b.project_id].filter(Boolean).join(" / "))}（${escapeText(b.date || (b.dates || []).join(" / "))}）${escapeText((b.candidates || []).join(" / ") || "官方项目 ID 重复，不能自动选择")}</div>`));
+    box.innerHTML = `
+      <table>
+        <tr><th style="text-align:left; padding:4px 8px">检查项</th>
+            <th style="text-align:left; padding:4px 8px">结果</th>
+            <th style="text-align:left; padding:4px 8px">说明</th></tr>
+        ${rows}
+        <tr><td>报告周期</td><td class="num"></td><td class="num" style="color:var(--muted)">${d.period[0]} ~ ${d.period[1]}</td></tr>
+        <tr><td>任务编号</td><td class="num"></td><td class="num" style="color:var(--muted)">${d.id}</td></tr>
+      </table>
+      ${notes.length ? `<div style="margin-top:10px; line-height:1.7">${notes.join("")}</div>` : ""}`;
+    box.classList.remove("hidden");
+  } else {
+    box.classList.add("hidden");
+  }
+}
+
+/* ---------------- 更新来源数据 Sheet ---------------- */
+function openUpdateSheet() {
+  PICKED = [];
+  $("file-list").innerHTML = "";
+  $("upload-msg").textContent = "";
+  $("do-update").disabled = true;
+  $("update-overlay").classList.remove("hidden");
+}
+function closeUpdateSheet() { $("update-overlay").classList.add("hidden"); }
+
+function handleFiles(files) {
+  for (const f of files) {
+    const up = (f.name || "").toUpperCase();
+    const kind = up.includes("NAFMII") ? "nafmii"
+               : (f.name || "").includes("新发行") ? "newbond" : "unknown";
+    PICKED = PICKED.filter(x => x.kind !== kind);
+    PICKED.push({file: f, kind});
+  }
+  renderPicked();
+}
+function renderPicked() {
+  const label = {newbond: "新发行债券", nafmii: "NAFMII", unknown: "无法识别"};
+  $("file-list").innerHTML = PICKED.map(x => `
+    <div class="file-row">
+      <span class="${x.kind === "unknown" ? "bad" : "ok"}">${x.kind === "unknown" ? "✗" : "✓"}</span>
+      <span>${x.file.name}</span><span style="color:var(--muted)">${label[x.kind]}</span>
+    </div>`).join("");
+  const kinds = PICKED.map(x => x.kind);
+  $("do-update").disabled = !(kinds.includes("newbond") && kinds.includes("nafmii"));
+}
+
+/* 拖拽与文件选择绑定 */
+const drop = $("drop");
+drop.onclick = () => $("file-input").click();
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("drag"); };
+drop.ondragleave = () => drop.classList.remove("drag");
+drop.ondrop = e => {
+  e.preventDefault(); drop.classList.remove("drag");
+  handleFiles(e.dataTransfer.files);
+};
+$("file-input").onchange = e => handleFiles(e.target.files);
+
+let PICKED = [];
+async function doUpdate() {
+  const fd = new FormData();
+  for (const x of PICKED) fd.append(x.kind === "newbond" ? "file1" : "file2", x.file);
+  $("do-update").disabled = true;
+  $("upload-msg").textContent = "上传中…";
+  try {
+    const d = await j("POST", "/api/datasets", fd);
+    $("upload-msg").textContent = d.message || "已更新";
+    setTimeout(() => { closeUpdateSheet(); refresh(); }, 1200);
+  } catch (e) {
+    $("upload-msg").textContent = "失败：" + e.message;
+    $("do-update").disabled = false;
+  }
+}
+
+/* ---------------- 模板上传 ---------------- */
+let TPL_PART = null;
+function openTplSheet(partId, name) {
+  TPL_PART = partId;
+  $("tpl-hint").textContent = name + "：上传人工确认后的本周/上周周报，作为下一轮模板；每周都以人工确认版为准。";
+  $("tpl-name").classList.add("hidden");
+  $("do-tpl").disabled = true;
+  $("tpl-overlay").classList.remove("hidden");
+}
+function closeTplSheet() { $("tpl-overlay").classList.add("hidden"); TPL_PART = null; }
+let TPL_FILE = null;
+$("tpl-drop").onclick = () => $("tpl-input").click();
+$("tpl-drop").ondragover = e => { e.preventDefault(); $("tpl-drop").classList.add("drag"); };
+$("tpl-drop").ondragleave = () => $("tpl-drop").classList.remove("drag");
+$("tpl-drop").ondrop = e => {
+  e.preventDefault(); $("tpl-drop").classList.remove("drag");
+  TPL_FILE = e.dataTransfer.files[0] || null;
+  showTplFile();
+};
+$("tpl-input").onchange = e => { TPL_FILE = e.target.files[0] || null; showTplFile(); };
+function showTplFile() {
+  if (!TPL_FILE) return;
+  $("tpl-name").classList.remove("hidden");
+  $("tpl-name").innerHTML = `<span class="ok">✓</span><span>${TPL_FILE.name}</span>`;
+  $("do-tpl").disabled = false;
+}
+async function doUploadTemplate() {
+  const fd = new FormData();
+  fd.append("file", TPL_FILE);
+  try {
+    const r = await j("POST", "/api/templates", fd);
+    if (r.part_id) {
+      try { localStorage.removeItem("report_done_" + r.part_id); } catch (e) {}
+    }
+    closeTplSheet();
+    refresh();
+  } catch (e) { toast(e.message); }
+}
+
+/* ---------------- 历史记录 ---------------- */
+function renderHistory(recentJobs) {
+  const d = {jobs: recentJobs || []};
+  const partNames = {northwest: "西北四省", guangdong: "广东", shaanxi: "陕西", henan: "河南"};
+  // 每个板块只保留最新一期可下载；出现新一轮后，旧记录仅作历史展示
+  const latestPerPart = {};
+  for (const x of d.jobs) {
+    if (!(x.part_id in latestPerPart)) latestPerPart[x.part_id] = x.id;
+  }
+  $("history-body").innerHTML = d.jobs.length ? `<table style="width:100%; border-collapse:separate; border-spacing:0 6px; font-size:15px">
+    ${d.jobs.map(x => {
+      const downloadable = latestPerPart[x.part_id] === x.id && x.status !== "FAILED";
+      const dl = downloadable
+        ? `<a href="/api/jobs/${x.id}/download" style="color:var(--accent)">下载</a>`
+        : `<span style="color:var(--muted)">仅记录</span>`;
+      return `<tr>
+      <td style="padding:14px 16px; background:#F7F7F9; border-radius:12px 0 0 12px; white-space:nowrap">${partNames[x.part_id] || x.part_id}</td>
+      <td style="padding:14px 16px; background:#F7F7F9" class="num">${x.period_start} ~ ${x.period_end}</td>
+      <td style="padding:14px 16px; background:#F7F7F9">${x.status}</td>
+      <td style="padding:14px 16px; background:#F7F7F9; color:var(--muted)" class="num">${x.created_at.slice(5, 16)}</td>
+      <td style="padding:14px 16px; background:#F7F7F9; border-radius:0 12px 12px 0">${dl}</td>
+    </tr>`;
+    }).join("")}</table>` : `<div style="color:var(--muted); font-size:15px; padding:12px 0">还没有生成记录</div>`;
+}
+function toggleHistory() { $("history").classList.toggle("hidden"); }
+
+/* ---------------- boot ---------------- */
+(async function boot() {
+  if (window.location.protocol === "file:") {
+    document.querySelector(".page").innerHTML = `
+      <header><h1>债市周报</h1><div class="dateline">请从启动程序进入</div></header>
+      <div class="card">
+        <h2 style="margin-top:0">双击程序文件夹里的“启动Web.command”</h2>
+        <p class="status-line">启动后会自动打开周报页面。本地 HTML 文件无法读取周报数据。</p>
+        <p class="status-line">如果程序已经启动，点击下方按钮即可进入。</p>
+        <a class="btn" href="http://localhost:8000/">打开周报</a>
+      </div>`;
+    return;
+  }
+  try { await refresh(); } catch (e) {
+    $("dateline").textContent = "连接未成功，请双击“启动Web.command”后重新打开页面";
+  }
+  // 不自动轮询：仅当页面从后台切回前台时刷新一次（避免页面不断跳动）
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refresh().catch(() => {});
+  });
+})();
+</script>
+</body>
+</html>

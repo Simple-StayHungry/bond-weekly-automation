@@ -1,0 +1,22 @@
+# runtime
+.venv/
+.weekly_venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+.env
+*.log
+data/*
+!data/.gitkeep
+jobs/*
+!jobs/.gitkeep
+output/*
+!output/.gitkeep
+shared/datasets/*
+!shared/datasets/.gitkeep
+shared/templates/*
+!shared/templates/.gitkeep
+# user inputs: keep only the synthetic starter map
+input/*
+!input/简称.xlsx
