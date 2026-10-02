@@ -2,12 +2,7 @@
 
 ## 债券市场周报自动化生成
 
-> A local pipeline for generating regional bond market weekly reports: it captures
-> the official trading-association and exchange disclosures with full pagination
-> reconciliation, freezes each complete batch as a verifiable snapshot, applies
-> auditable per-region rules, and writes the new week into last week's own Excel
-> template without touching historical rows.
-
+> A local pipeline for collecting public bond-market data, validating completeness and generating regional weekly reports from an existing Excel template.
 
 ## 界面
 
@@ -15,45 +10,34 @@
 
 > 截图使用虚构/合成数据，仅用于展示程序界面，不包含任何真实业务材料。
 
-每周要跑一份地区债市周报，动作是固定的：从**交易商协会、上交所、深交所、北交所**四个官方渠道
-逐省逐页取数 → 按地区口径清洗 → 按业务规则调整格式 → 插进**上周那份 Excel 成品的最上面三行**，
-历史区域一个格子都不能动。
-
-人工做这件事的代价在于：漏一页就少一只债；格式规则散在脑子里，换个人就对不上；
-Excel 是"复制上一周再改文字"改出来的，脚本一重写字体边框全丢；
-更麻烦的是**出错了说不清是哪一步错的**。
-
-本工作台把这条链路固定成：**官方抓取 → 完整性对账 → 批次快照 → 规则引擎 → 模板保留写入 → 历史区 diff 校验**，
-并且给出结构化的 `PASS / WARNING / BLOCKED` 结论 —— 数据不可信时**直接拒绝出报告**，而不是产出一份看起来正常的文件。
-
-
+该工具用于地区债券市场周报的周期性生成。程序从**交易商协会、上交所、深交所和北交所**获取公开信息，对分页结果与官方总数进行完整性核验，再按照地区配置和业务规则整理数据，并写入上一期 Excel 模板。生成完成后会对历史区域进行差异校验；当数据完整性或模板校验未通过时，流程停止并返回阻断原因。
 
 ## 核心能力
 
 | 能力 | 说明 |
 |---|---|
-| **多源官方采集** | 交易商协会、上交所、深交所、北交所四路抓取，纯 HTTP 实现，不依赖浏览器或 Selenium |
-| **抓取完整性对账** | 一批数据只有在**每个省份、每一页都与官方总数对上**之后才算抓取成功，凭据随数据一起传递 |
-| **批次快照与回放** | 完整批次固化为可校验快照；历史批次原样保留并标记为未验证，回放前先整体校验而不是拿旧批次掩盖新失败 |
-| **可审计的业务规则** | 各所金额格式、ABS/公募 REITs 剔除、承销商简称映射与冲突阻断、高亮规则，逐条编号成文并有测试覆盖 |
-| **模板保留写入** | 直接做 xlsx 的 OOXML 变换并克隆上一周的样式块，**不用 openpyxl 重写**（会丢 XML 细节） |
-| **历史区不可变** | 生成后强制 diff 校验：历史区域出现任何差异即判定失败，**不产出文件** |
-| **结构化结论** | 一次运行返回 `PASS / WARNING / BLOCKED`、指标、警告、阻断原因与来源清单 |
+| **多源数据采集** | 从交易商协会、上交所、深交所和北交所获取公开数据 |
+| **完整性核验** | 对分页结果、地区汇总数和官方总数进行一致性检查 |
+| **批次快照与回放** | 对完整批次保存可校验快照，用于复核和历史重放 |
+| **规则集中管理** | 金额格式、板块筛选、简称映射和高亮规则集中维护并纳入测试 |
+| **模板继承写入** | 直接在 xlsx 的 OOXML 层更新新一期区域，保留上一期模板中的既有格式和结构 |
+| **历史区域保护** | 生成后对历史区域执行差异校验，检测到非预期修改时停止输出 |
+| **结构化运行结果** | 返回 `PASS / WARNING / BLOCKED`、告警信息、阻断原因和来源记录 |
 
 ## 处理流程
 
 ```mermaid
 flowchart TD
-    A["交易商协会 · 上交所 · 深交所 · 北交所"] --> B["分页抓取<br/>逐省逐页"]
-    B --> C{"与官方总数对账"}
-    C -- "不一致" --> X["BLOCKED<br/>不产出报告"]
-    C -- "一致" --> D["批次快照<br/>不可变 · 带来源凭据"]
-    D --> E["规则引擎<br/>金额格式 · 板块剔除 · 简称映射 · 高亮"]
-    F["上周 Excel 成品"] --> G["模板保留写入<br/>克隆上周样式块，只动顶部三行"]
+    A["交易商协会 · 上交所 · 深交所 · 北交所"] --> B["分页采集<br/>按地区整理"]
+    B --> C{"与官方统计结果核验"}
+    C -- "不一致" --> X["BLOCKED<br/>停止生成"]
+    C -- "一致" --> D["保存批次快照"]
+    D --> E["地区规则处理<br/>格式 · 筛选 · 简称映射 · 高亮"]
+    F["上一期 Excel 模板"] --> G["模板继承写入<br/>更新当期区域"]
     E --> G
-    G --> H{"历史区 diff 校验"}
-    H -- "有差异" --> X
-    H -- "无差异" --> I["本周周报 · PASS"]
+    G --> H{"历史区域差异校验"}
+    H -- "异常" --> X
+    H -- "通过" --> I["生成本期周报"]
 ```
 
 ## 技术实现
@@ -61,12 +45,12 @@ flowchart TD
 | 层 | 实现 |
 |---|---|
 | 运行时 | Python 3.9+ |
-| 数据采集 | 标准库 HTTP + `requests` + `html.parser`，直接解析官方接口响应与页面 |
-| 核心引擎 | `generate_report(request, context) -> ReportResult` —— **无状态纯任务接口**，CLI / 双击脚本 / Web 三端都只是壳 |
-| 快照层 | SQLite 保存批次凭据与原始响应原文，失败尝试也留档 |
-| 规则层 | 业务规则集中在 `rules.py` 并逐条编号（R1–R7），改规则前必须先跑回归 |
-| 模板层 | xlsx OOXML 字符串级变换 + 追加 sharedStrings，保留人工编辑产生的一切格式 |
-| 服务层 | FastAPI，默认只监听 `127.0.0.1` |
+| 数据采集 | 标准库 HTTP、`requests` 与 `html.parser`，根据不同来源解析接口响应或页面 |
+| 核心引擎 | `generate_report(request, context) -> ReportResult`，CLI、双击脚本和 Web 共用同一核心接口 |
+| 快照层 | SQLite 保存批次校验信息和原始响应，失败尝试亦可留档 |
+| 规则层 | 业务规则集中在 `rules.py` 并按编号维护 |
+| 模板层 | 直接在 xlsx OOXML 层进行更新，保留模板已有格式与结构 |
+| 服务层 | FastAPI，默认仅监听 `127.0.0.1` |
 | 测试 | 标准库 `unittest` |
 
 ## 测试与质量基线
@@ -75,17 +59,17 @@ flowchart TD
 python -m unittest discover -s tests -v
 ```
 
-```
-Ran 7 tests in 0.192s — OK
+```text
+Ran 7 tests — OK
 ```
 
-覆盖：金额格式规则、简称映射加载、**交易商协会未知状态必须 BLOCKED**、
-默认不预置任何特定承销商优先、Web 默认只监听本机、空数据库可初始化、快照往返校验。
+测试覆盖金额格式、简称映射、未知数据状态阻断、默认配置、Web 监听地址、空数据库初始化和快照往返校验等关键规则。
 
 ## 快速开始
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -93,52 +77,44 @@ Web 工作流：
 
 ```bash
 uvicorn app.web.app:app --host 127.0.0.1 --port 8000
-# 或双击 start_web.command
 ```
 
-命令行生成：
+也可双击 `start_web.command`。
+
+命令行：
 
 ```bash
-python3 weekly.py                    # 全自动：取最新模板与数据
-python3 weekly.py --replay-cutoff "2026-08-15 23:59:59"   # 用快照重放某一期
+python3 weekly.py
+python3 weekly.py --replay-cutoff "2026-08-15 23:59:59"
 ```
 
-## 地区配置化（Part Profile）
+## 地区配置
 
-一个 **Part** = 地区范围 + 业务规则 + 格式策略，全部写在 `app/core/parts.yaml`。
-新增地区只需加一段配置，**视觉格式永远从"上一周成品"继承，不在这里写死**。
+地区范围、业务规则和格式策略统一配置在 `app/core/parts.yaml`。新增地区通过新增配置完成，模板视觉格式继续从上一期成品继承。
 
-仓库内公开了四个地区 Profile 作为结构示例：`northwest`（西北四省）、`guangdong`（广东）、
-`shaanxi`（陕西）、`henan`（河南）。
+公开版包含 `northwest`、`guangdong`、`shaanxi`、`henan` 四个地区 Profile，作为配置结构示例。
 
 ## 项目结构
 
-```
-weekly.py                 命令行薄壳
+```text
+weekly.py                       命令行入口
 app/core/
-  engine.py               无状态核心：generate_report()
-  exchange_fetch.py       四个官方渠道的抓取与完整性对账
-  snapshot.py             批次快照与回放校验
-  rules.py                业务规则（R1–R7）
-  template_engine.py      模板保留写入 + 历史区 diff 校验
-  capture_store.py        原始响应留档
-  parts.yaml              地区 Profile 配置
-app/web/                  FastAPI 服务与 Web 工作流
-tests/                    回归测试
-tools/public_release_check.py   公开版脱敏自检
+  engine.py                     核心生成接口
+  exchange_fetch.py             多来源采集与完整性核验
+  snapshot.py                   批次快照与回放
+  rules.py                      业务规则
+  template_engine.py            模板写入与历史区域校验
+  capture_store.py              原始响应留档
+  parts.yaml                    地区配置
+app/web/                        Web 工作流
+tests/                          回归测试
+tools/public_release_check.py   公开版脱敏检查
 ```
 
 ## 数据安全
 
-本仓库为**公开展示版本**，仅包含通用代码、算法实现与回归测试。
-实际业务中的数据库、历史抓取快照、生产模板、真实输入数据与输出报告均不包含在仓库中，
-相关目录已由 `.gitignore` 排除（`data/`、`jobs/`、`output/`、`shared/` 只保留占位文件）。
-`input/简称.xlsx` 为虚构示例映射，可替换为自己的映射表。
-
-公开版未预置任何特定券商的优先排序、高亮机构、法人简称例外或内部文件号映射；
-需要这些行为时通过配置或环境变量自行设置。正式部署版本与本公开仓库分开维护。
+本仓库为公开展示版本，仅包含通用代码、配置结构和回归测试。实际业务中的数据库、历史抓取快照、生产模板、真实输入数据和输出报告不进入版本库。`input/简称.xlsx` 为虚构示例映射，可替换为自有映射表。
 
 ## 许可
 
-本仓库当前未附开源许可证。公开可见不等于自动获得复制、修改与再分发许可。
-如需复用，请先联系作者确认授权。
+本仓库当前未附开源许可证。公开可见不代表自动授予复制、修改或再分发权限；如需复用，请先联系作者确认授权。
